@@ -24,30 +24,15 @@ body {
 .stereo-unit {
   width: 100%;
   max-width: 900px;
-  background: linear-gradient(180deg, #d4d4d4 0%, #a8a8a8 20%, #c0c0c0 50%, #909090 100%);
-  border-radius: 12px;
-  padding: 20px;
+  background: linear-gradient(292deg, #0a0b11 0%, #41444a2b 40%, #0e101b 60%, #161924 100%);
+  border-radius: 80px;
+  padding: 40px;
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.5),
-    inset 0 2px 0 rgba(255, 255, 255, 0.4),
+    inset 0 2px 0 #b9c6eb14,
     inset 0 -2px 4px rgba(0, 0, 0, 0.2);
   position: relative;
-}
-
-/* Brushed metal texture overlay */
-.stereo-unit::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 2px,
-    rgba(255, 255, 255, 0.03) 2px,
-    rgba(255, 255, 255, 0.03) 4px
-  );
-  pointer-events: none;
+  overflow: hidden;
 }
 
 /* ================================
@@ -106,6 +91,24 @@ body {
     inset 0 4px 12px rgba(0, 0, 0, 0.8),
     inset 0 0 0 1px rgba(0, 0, 0, 0.5),
     0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+/* Vertical scanlines overlay on screen */
+.display-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.03) 2px,
+    rgba(255, 255, 255, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
 }
 
 .display-content {
