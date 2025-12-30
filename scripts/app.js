@@ -18,8 +18,11 @@
   const CONFIG = {
     eqBarCount: 16,
     eqSegmentCount: 12,
-    eqUpdateInterval: 80,
-    fftSize: 256, // Determines frequency resolution
+    eqUpdateInterval: 50, // Slightly faster for smoother response
+    fftSize: 512, // More frequency resolution
+    smoothing: 0.6, // How much previous frame influences current (0-1)
+    peakDecay: 0.02, // How fast peaks fall per frame
+    peakHoldTime: 500, // ms to hold peak before falling
   };
 
   // ================================
@@ -36,11 +39,16 @@
     audioContext: null,
     analyser: null,
     frequencyData: null,
-    audioSource: null,      // Current source (mic or file)
-    audioElement: null,     // For file playback
-    micStream: null,        // Microphone stream reference
-    audioMode: 'demo',      // 'demo', 'mic', or 'file'
+    audioSource: null,
+    audioElement: null,
+    micStream: null,
+    audioMode: 'demo',
     isPlaying: false,
+    
+    // EQ smoothing and peaks
+    smoothedLevels: null, // Smoothed frequency levels
+    peakLevels: null,     // Current peak positions
+    peakHoldTimes: null,  // When each peak was last set
   };
 
   // ================================
@@ -94,8 +102,15 @@
     state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     state.analyser = state.audioContext.createAnalyser();
     state.analyser.fftSize = CONFIG.fftSize;
-    state.analyser.smoothingTimeConstant = 0.7;
+    state.analyser.smoothingTimeConstant = 0.4; // Less smoothing in analyser, we do our own
+    state.analyser.minDecibels = -85;
+    state.analyser.maxDecibels = -10;
     state.frequencyData = new Uint8Array(state.analyser.frequencyBinCount);
+    
+    // Initialize smoothing arrays
+    state.smoothedLevels = new Array(CONFIG.eqBarCount).fill(0);
+    state.peakLevels = new Array(CONFIG.eqBarCount).fill(0);
+    state.peakHoldTimes = new Array(CONFIG.eqBarCount).fill(0);
     
     addLog('AUDIO ENGINE INITIALIZED');
   }
@@ -273,6 +288,11 @@
   function buildEQBars() {
     const fragment = document.createDocumentFragment();
     segments = [];
+    
+    // Initialize smoothing arrays
+    state.smoothedLevels = new Array(CONFIG.eqBarCount).fill(0);
+    state.peakLevels = new Array(CONFIG.eqBarCount).fill(0);
+    state.peakHoldTimes = new Array(CONFIG.eqBarCount).fill(0);
 
     for (let i = 0; i < CONFIG.eqBarCount; i++) {
       const bar = document.createElement('div');
@@ -289,7 +309,8 @@
           el: segment,
           lit: false,
           color: null,
-          peak: false
+          peak: false,
+          isPeakHold: false
         });
       }
 
@@ -304,35 +325,67 @@
     const levels = new Array(CONFIG.eqBarCount);
 
     if (state.audioMode !== 'demo' && state.analyser && state.frequencyData) {
-      // Get real frequency data
       state.analyser.getByteFrequencyData(state.frequencyData);
       
-      // Map frequency bins to our 16 bars
-      // frequencyBinCount is fftSize/2 = 128 bins
-      // We'll group bins into 16 bars, emphasizing lower frequencies
       const binCount = state.frequencyData.length;
+      const sampleRate = state.audioContext.sampleRate;
+      const nyquist = sampleRate / 2;
       
+      // Define frequency bands (in Hz) - more resolution in bass/mids
+      // These roughly correspond to: sub-bass, bass, low-mid, mid, upper-mid, presence, brilliance
+      const frequencyBands = [
+        20, 40, 60, 90, 130, 180, 250, 350,
+        500, 700, 1000, 1400, 2000, 3500, 6000, 12000, 20000
+      ];
+      
+      // Per-band gain compensation (boost highs since they're naturally quieter)
+      const bandGains = [
+        1.0, 1.0, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5,
+        1.6, 1.8, 2.0, 2.2, 2.5, 2.8, 3.2, 3.6
+      ];
+
       for (let i = 0; i < CONFIG.eqBarCount; i++) {
-        // Use logarithmic scaling to emphasize bass/mids
-        const startBin = Math.floor(Math.pow(i / CONFIG.eqBarCount, 1.5) * binCount);
-        const endBin = Math.floor(Math.pow((i + 1) / CONFIG.eqBarCount, 1.5) * binCount);
+        const lowFreq = frequencyBands[i];
+        const highFreq = frequencyBands[i + 1];
         
+        // Convert frequency to bin index
+        const lowBin = Math.floor(lowFreq / nyquist * binCount);
+        const highBin = Math.min(Math.ceil(highFreq / nyquist * binCount), binCount - 1);
+        
+        // Get average amplitude for this frequency range
         let sum = 0;
-        const count = Math.max(1, endBin - startBin);
+        let count = 0;
         
-        for (let bin = startBin; bin < endBin && bin < binCount; bin++) {
+        for (let bin = lowBin; bin <= highBin; bin++) {
           sum += state.frequencyData[bin];
+          count++;
         }
         
-        // Normalize to 0-1 range (frequency data is 0-255)
-        levels[i] = (sum / count) / 255;
+        // Normalize and apply gain compensation
+        let level = count > 0 ? (sum / count) / 255 : 0;
+        level = Math.min(1, level * bandGains[i]);
+        
+        // Apply smoothing (lerp between previous and current)
+        const smoothed = state.smoothedLevels[i] * CONFIG.smoothing + 
+                        level * (1 - CONFIG.smoothing);
+        state.smoothedLevels[i] = smoothed;
+        
+        levels[i] = smoothed;
       }
     } else {
-      // Demo mode - animated sine waves
+      // Demo mode - more interesting animated pattern
       for (let i = 0; i < CONFIG.eqBarCount; i++) {
-        const base = Math.sin(timestamp / 300 + i * 0.5) * 0.3 + 0.5;
-        const noise = Math.random() * 0.3;
-        levels[i] = Math.max(0.1, Math.min(1, base + noise));
+        const wave1 = Math.sin(timestamp / 400 + i * 0.4) * 0.3;
+        const wave2 = Math.sin(timestamp / 250 + i * 0.7) * 0.2;
+        const wave3 = Math.sin(timestamp / 600 - i * 0.3) * 0.15;
+        const noise = Math.random() * 0.15;
+        const base = 0.35 + wave1 + wave2 + wave3 + noise;
+        
+        const smoothed = state.smoothedLevels[i] * CONFIG.smoothing + 
+                        base * (1 - CONFIG.smoothing);
+        state.smoothedLevels[i] = smoothed;
+        
+        levels[i] = Math.max(0.05, Math.min(1, smoothed));
       }
     }
 
@@ -350,16 +403,33 @@
     const levels = getEQLevels(timestamp);
 
     for (let i = 0; i < CONFIG.eqBarCount; i++) {
-      const litCount = Math.floor(levels[i] * CONFIG.eqSegmentCount);
+      const level = levels[i];
+      const litCount = Math.floor(level * CONFIG.eqSegmentCount);
+      
+      // Update peak tracking
+      if (level >= state.peakLevels[i]) {
+        state.peakLevels[i] = level;
+        state.peakHoldTimes[i] = timestamp;
+      } else if (timestamp - state.peakHoldTimes[i] > CONFIG.peakHoldTime) {
+        // Peak hold time expired, let it fall
+        state.peakLevels[i] = Math.max(level, state.peakLevels[i] - CONFIG.peakDecay);
+      }
+      
+      const peakSegment = Math.min(
+        CONFIG.eqSegmentCount - 1,
+        Math.floor(state.peakLevels[i] * CONFIG.eqSegmentCount)
+      );
+      
       const barSegments = segments[i];
 
       for (let j = 0; j < CONFIG.eqSegmentCount; j++) {
         const seg = barSegments[j];
         const shouldBeLit = j < litCount;
-        const shouldBePeak = shouldBeLit && (j === litCount - 1);
+        const shouldBePeak = !shouldBeLit && j === peakSegment && peakSegment >= litCount;
+        const isTopLit = shouldBeLit && (j === litCount - 1);
         
         let targetColor = null;
-        if (shouldBeLit) {
+        if (shouldBeLit || shouldBePeak) {
           if (j >= 10) {
             targetColor = 'red';
           } else if (j >= 8) {
@@ -369,7 +439,12 @@
           }
         }
 
-        if (seg.lit !== shouldBeLit || seg.color !== targetColor || seg.peak !== shouldBePeak) {
+        const needsUpdate = seg.lit !== shouldBeLit || 
+                           seg.color !== targetColor || 
+                           seg.peak !== isTopLit ||
+                           seg.isPeakHold !== shouldBePeak;
+
+        if (needsUpdate) {
           const cl = seg.el.classList;
 
           if (seg.lit !== shouldBeLit) {
@@ -383,9 +458,14 @@
             seg.color = targetColor;
           }
 
-          if (seg.peak !== shouldBePeak) {
-            cl.toggle('eq-segment--peak', shouldBePeak);
-            seg.peak = shouldBePeak;
+          if (seg.peak !== isTopLit) {
+            cl.toggle('eq-segment--peak', isTopLit);
+            seg.peak = isTopLit;
+          }
+          
+          if (seg.isPeakHold !== shouldBePeak) {
+            cl.toggle('eq-segment--peak-hold', shouldBePeak);
+            seg.isPeakHold = shouldBePeak;
           }
         }
       }

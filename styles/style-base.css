@@ -234,6 +234,22 @@ body {
   box-shadow: 0 0 8px #ff3366, inset 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
+/* Peak hold indicators (floating dot above the bar) */
+.eq-segment--peak-hold.eq-segment--blue {
+  background: #00d4ff;
+  box-shadow: 0 0 6px #00d4ff, inset 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+.eq-segment--peak-hold.eq-segment--amber {
+  background: #ffaa00;
+  box-shadow: 0 0 6px #ffaa00, inset 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+.eq-segment--peak-hold.eq-segment--red {
+  background: #ff3366;
+  box-shadow: 0 0 6px #ff3366, inset 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
 /* Output Display */
 .output-container {
   background: rgba(0, 0, 0, 0.4);
