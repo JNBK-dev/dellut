@@ -14,6 +14,14 @@
     <!-- Top branding bar -->
     <div class="top-bar">
       <span class="brand-label">DIGITAL AUDIO</span>
+      <div class="audio-controls">
+        <button class="control-btn" id="micBtn" title="Microphone">MIC</button>
+        <label class="control-btn file-label" title="Load Audio File">
+          FILE
+          <input type="file" id="audioFileInput" accept="audio/*" hidden>
+        </label>
+        <button class="control-btn" id="playPauseBtn" title="Play/Pause" disabled>PLAY</button>
+      </div>
       <div class="power-indicator">
         <div class="led-indicator"></div>
         <span class="brand-label">POWER</span>
