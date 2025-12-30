@@ -1,6 +1,12 @@
 /**
  * Stereo Display App
  * Main application logic for the retro stereo equalizer interface
+ * 
+ * Performance optimized version:
+ * - Uses classList.toggle() instead of className replacement
+ * - Caches DOM references for segments
+ * - Uses requestAnimationFrame with throttling
+ * - Minimizes style recalculations
  */
 
 (function() {
@@ -23,12 +29,12 @@
   const state = {
     output: 'READY...',
     logs: ['SYSTEM INITIALIZED', 'AWAITING INPUT...'],
-    eqBars: new Array(CONFIG.eqBarCount).fill(0),
-    eqIntervalId: null,
+    eqAnimationId: null,
+    lastEqUpdate: 0,
   };
 
   // ================================
-  // DOM ELEMENTS
+  // DOM CACHE
   // ================================
 
   const elements = {
@@ -38,6 +44,10 @@
     commandInput: null,
     submitBtn: null,
   };
+
+  // Pre-cached segment references for fast access
+  // segments[barIndex][segmentIndex] = { el, state }
+  let segments = [];
 
   // ================================
   // INITIALIZATION
@@ -65,81 +75,108 @@
 
   function buildEQBars() {
     const fragment = document.createDocumentFragment();
+    segments = [];
 
     for (let i = 0; i < CONFIG.eqBarCount; i++) {
       const bar = document.createElement('div');
       bar.className = 'eq-bar';
-      bar.dataset.barIndex = i;
+      
+      const barSegments = [];
 
       for (let j = 0; j < CONFIG.eqSegmentCount; j++) {
         const segment = document.createElement('div');
-        segment.className = 'eq-segment eq-segment--off';
-        segment.dataset.segmentIndex = j;
+        segment.className = 'eq-segment';
         bar.appendChild(segment);
+        
+        // Cache reference with current state
+        barSegments.push({
+          el: segment,
+          lit: false,
+          color: null, // 'blue', 'amber', or 'red'
+          peak: false
+        });
       }
 
+      segments.push(barSegments);
       fragment.appendChild(bar);
     }
 
     elements.eqBars.appendChild(fragment);
   }
 
-  function updateEQBars() {
-    const bars = elements.eqBars.children;
+  function updateEQBars(timestamp) {
+    // Throttle updates to configured interval
+    if (timestamp - state.lastEqUpdate < CONFIG.eqUpdateInterval) {
+      state.eqAnimationId = requestAnimationFrame(updateEQBars);
+      return;
+    }
+    state.lastEqUpdate = timestamp;
 
     for (let i = 0; i < CONFIG.eqBarCount; i++) {
       // Calculate animated level for this bar
-      const base = Math.sin(Date.now() / 300 + i * 0.5) * 0.3 + 0.5;
+      const base = Math.sin(timestamp / 300 + i * 0.5) * 0.3 + 0.5;
       const noise = Math.random() * 0.3;
       const level = Math.max(0.1, Math.min(1, base + noise));
+      const litCount = Math.floor(level * CONFIG.eqSegmentCount);
 
-      const litSegments = Math.floor(level * CONFIG.eqSegmentCount);
-      const segments = bars[i].children;
+      const barSegments = segments[i];
 
       for (let j = 0; j < CONFIG.eqSegmentCount; j++) {
-        const segment = segments[j];
-        const isLit = j < litSegments;
-        const isPeak = j === litSegments - 1 && isLit;
-
-        // Determine color class based on segment position
-        let colorClass = '';
-        if (isLit) {
+        const seg = barSegments[j];
+        const shouldBeLit = j < litCount;
+        const shouldBePeak = shouldBeLit && (j === litCount - 1);
+        
+        // Determine target color
+        let targetColor = null;
+        if (shouldBeLit) {
           if (j >= 10) {
-            colorClass = 'eq-segment--red';
+            targetColor = 'red';
           } else if (j >= 8) {
-            colorClass = 'eq-segment--amber';
+            targetColor = 'amber';
           } else {
-            colorClass = 'eq-segment--blue';
+            targetColor = 'blue';
           }
         }
 
-        // Build class string
-        let className = 'eq-segment';
-        if (isLit) {
-          className += ' ' + colorClass;
-          if (isPeak) {
-            className += ' eq-segment--peak';
-          }
-        } else {
-          className += ' eq-segment--off';
-        }
+        // Only update DOM if state changed
+        if (seg.lit !== shouldBeLit || seg.color !== targetColor || seg.peak !== shouldBePeak) {
+          const cl = seg.el.classList;
 
-        // Only update if changed (minor optimization)
-        if (segment.className !== className) {
-          segment.className = className;
+          // Update lit state
+          if (seg.lit !== shouldBeLit) {
+            cl.toggle('eq-segment--lit', shouldBeLit);
+            seg.lit = shouldBeLit;
+          }
+
+          // Update color
+          if (seg.color !== targetColor) {
+            if (seg.color) cl.remove('eq-segment--' + seg.color);
+            if (targetColor) cl.add('eq-segment--' + targetColor);
+            seg.color = targetColor;
+          }
+
+          // Update peak
+          if (seg.peak !== shouldBePeak) {
+            cl.toggle('eq-segment--peak', shouldBePeak);
+            seg.peak = shouldBePeak;
+          }
         }
       }
     }
+
+    state.eqAnimationId = requestAnimationFrame(updateEQBars);
   }
 
   function startEQAnimation() {
-    state.eqIntervalId = setInterval(updateEQBars, CONFIG.eqUpdateInterval);
+    if (!state.eqAnimationId) {
+      state.eqAnimationId = requestAnimationFrame(updateEQBars);
+    }
   }
 
   function stopEQAnimation() {
-    if (state.eqIntervalId) {
-      clearInterval(state.eqIntervalId);
-      state.eqIntervalId = null;
+    if (state.eqAnimationId) {
+      cancelAnimationFrame(state.eqAnimationId);
+      state.eqAnimationId = null;
     }
   }
 
@@ -158,8 +195,24 @@
 
   function addLog(message) {
     state.logs.push(message);
-    renderLogs();
+    
+    // Append single entry instead of re-rendering all
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.textContent = message;
+    elements.logContent.appendChild(entry);
+    
+    // Update opacity of all entries
+    updateLogOpacity();
     scrollLogsToBottom();
+  }
+
+  function updateLogOpacity() {
+    const entries = elements.logContent.children;
+    const total = entries.length;
+    for (let i = 0; i < total; i++) {
+      entries[i].style.opacity = 0.6 + (i / total) * 0.4;
+    }
   }
 
   function renderLogs() {
@@ -169,7 +222,6 @@
     state.logs.forEach((log, index) => {
       const entry = document.createElement('div');
       entry.className = 'log-entry';
-      // Fade in newer entries (older = more transparent)
       entry.style.opacity = 0.6 + (index / totalLogs) * 0.4;
       entry.textContent = log;
       fragment.appendChild(entry);
@@ -198,13 +250,13 @@
     const timestamp = getTimestamp();
 
     // Log the input
-    addLog(`[${timestamp}] > ${input}`);
+    addLog('[' + timestamp + '] > ' + input);
 
     // Update output display
     setOutput(input.toUpperCase());
 
     // Log the output update
-    addLog(`[${timestamp}] OUTPUT UPDATED`);
+    addLog('[' + timestamp + '] OUTPUT UPDATED');
 
     // Clear input
     elements.commandInput.value = '';
@@ -226,7 +278,7 @@
   }
 
   // ================================
-  // PUBLIC API (optional, for Firebase integration)
+  // PUBLIC API
   // ================================
 
   window.StereoApp = {
