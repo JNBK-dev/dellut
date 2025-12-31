@@ -85,64 +85,81 @@
 
   <!-- TERMINAL INTERFACE -->
   <div class="interface interface--terminal" id="terminalInterface">
-    <div class="terminal-unit">
-      <!-- Top bar -->
-      <div class="top-bar">
-        <span class="brand-label terminal-label">DATA TERMINAL</span>
-        <div class="power-indicator">
-          <div class="led-indicator led-indicator--amber"></div>
-          <span class="brand-label terminal-label">ONLINE</span>
-        </div>
-      </div>
-
-      <!-- Main display -->
-      <div class="terminal-panel">
-        <div class="terminal-content">
-          <!-- Primary output area -->
-          <div class="terminal-main">
-            <div class="terminal-output" id="terminalOutput">
-              <div class="terminal-line">> SYSTEM READY</div>
-              <div class="terminal-line">> AWAITING DATA FEED...</div>
-            </div>
-          </div>
-
-          <!-- Status sidebar -->
-          <div class="terminal-sidebar">
-            <div class="terminal-status-header">STATUS</div>
-            <div class="terminal-status" id="terminalStatus">
-              <div class="status-item">
-                <span class="status-label">UPTIME</span>
-                <span class="status-value" id="uptimeValue">00:00:00</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">FEED</span>
-                <span class="status-value" id="feedStatus">IDLE</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">BUFFER</span>
-                <span class="status-value" id="bufferStatus">0 KB</span>
+    <div class="oscilloscope">
+      <!-- CRT Bezel -->
+      <div class="crt-bezel">
+        <!-- Screen -->
+        <div class="crt-screen">
+          <div class="crt-glass">
+            <!-- Graticule grid -->
+            <div class="crt-graticule"></div>
+            
+            <!-- Phosphor layer with content -->
+            <div class="crt-phosphor">
+              <div class="terminal-output" id="terminalOutput">
+                <div class="terminal-line">> SYSTEM READY</div>
+                <div class="terminal-line">> AWAITING DATA FEED...</div>
               </div>
             </div>
+            
+            <!-- CRT effects overlay -->
+            <div class="crt-overlay"></div>
+            <div class="crt-flicker"></div>
           </div>
         </div>
+        
+        <!-- Input area integrated into bezel -->
+        <div class="crt-input-area">
+          <span class="terminal-prompt">></span>
+          <input
+            type="text"
+            class="terminal-input"
+            id="terminalInput"
+            placeholder="ENTER COMMAND..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
       </div>
-
-      <!-- Input section -->
-      <div class="input-section">
-        <span class="terminal-prompt">></span>
-        <input
-          type="text"
-          class="input-field terminal-input"
-          id="terminalInput"
-          placeholder="ENTER COMMAND..."
-          autocomplete="off"
-        >
-        <button class="submit-btn terminal-btn" id="terminalSubmitBtn">EXEC</button>
+      
+      <!-- Control Panel -->
+      <div class="scope-controls">
+        <div class="control-group">
+          <div class="control-label">INTENSITY</div>
+          <div class="control-knob" id="intensityKnob">
+            <div class="knob-marker"></div>
+          </div>
+        </div>
+        
+        <div class="control-group">
+          <div class="control-label">FOCUS</div>
+          <div class="control-knob" id="focusKnob">
+            <div class="knob-marker"></div>
+          </div>
+        </div>
+        
+        <div class="status-display">
+          <div class="status-row">
+            <span class="status-label">UPTIME</span>
+            <span class="status-value" id="uptimeValue">00:00:00</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">BUFFER</span>
+            <span class="status-value" id="bufferStatus">0 KB</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">FEED</span>
+            <span class="status-value" id="feedStatus">IDLE</span>
+          </div>
+        </div>
+        
+        <button class="scope-button" id="terminalSubmitBtn">EXEC</button>
       </div>
-
-      <!-- Bottom branding -->
-      <div class="bottom-bar">
-        <span class="brand-label brand-label--dim terminal-label">MODEL DT-7700 DATA TERMINAL</span>
+      
+      <!-- Model plate -->
+      <div class="scope-nameplate">
+        <span class="scope-brand">ANTHROPIC</span>
+        <span class="scope-model">MODEL OS-7700</span>
       </div>
     </div>
   </div>
