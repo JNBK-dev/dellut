@@ -6,6 +6,7 @@
  * - Real-time microphone visualization
  * - Audio file playback visualization
  * - Fallback to animated demo mode
+ * - Terminal interface with data display
  */
 
 (function() {
@@ -18,11 +19,11 @@
   const CONFIG = {
     eqBarCount: 16,
     eqSegmentCount: 12,
-    eqUpdateInterval: 50, // Slightly faster for smoother response
-    fftSize: 512, // More frequency resolution
-    smoothing: 0.6, // How much previous frame influences current (0-1)
-    peakDecay: 0.02, // How fast peaks fall per frame
-    peakHoldTime: 500, // ms to hold peak before falling
+    eqUpdateInterval: 50,
+    fftSize: 512,
+    smoothing: 0.6,
+    peakDecay: 0.02,
+    peakHoldTime: 500,
   };
 
   // ================================
@@ -30,6 +31,10 @@
   // ================================
 
   const state = {
+    // Interface mode
+    currentMode: 'audio', // 'audio' or 'terminal'
+    
+    // Audio interface state
     output: 'READY...',
     logs: ['SYSTEM INITIALIZED', 'AWAITING INPUT...'],
     eqAnimationId: null,
@@ -46,9 +51,14 @@
     isPlaying: false,
     
     // EQ smoothing and peaks
-    smoothedLevels: null, // Smoothed frequency levels
-    peakLevels: null,     // Current peak positions
-    peakHoldTimes: null,  // When each peak was last set
+    smoothedLevels: null,
+    peakLevels: null,
+    peakHoldTimes: null,
+    
+    // Terminal state
+    terminalLines: ['> SYSTEM READY', '> AWAITING DATA FEED...'],
+    terminalStartTime: null,
+    uptimeIntervalId: null,
   };
 
   // ================================
@@ -56,6 +66,13 @@
   // ================================
 
   const elements = {
+    // Mode toggle
+    audioModeBtn: null,
+    terminalModeBtn: null,
+    audioInterface: null,
+    terminalInterface: null,
+    
+    // Audio interface
     eqBars: null,
     outputDisplay: null,
     logContent: null,
@@ -64,6 +81,14 @@
     micBtn: null,
     audioFileInput: null,
     playPauseBtn: null,
+    
+    // Terminal interface
+    terminalOutput: null,
+    terminalInput: null,
+    terminalSubmitBtn: null,
+    uptimeValue: null,
+    feedStatus: null,
+    bufferStatus: null,
   };
 
   // Cached segment references
@@ -79,9 +104,17 @@
     renderLogs();
     bindEvents();
     startEQAnimation();
+    initTerminal();
   }
 
   function cacheElements() {
+    // Mode toggle
+    elements.audioModeBtn = document.getElementById('audioModeBtn');
+    elements.terminalModeBtn = document.getElementById('terminalModeBtn');
+    elements.audioInterface = document.getElementById('audioInterface');
+    elements.terminalInterface = document.getElementById('terminalInterface');
+    
+    // Audio interface
     elements.eqBars = document.getElementById('eqBars');
     elements.outputDisplay = document.getElementById('outputDisplay');
     elements.logContent = document.getElementById('logContent');
@@ -90,6 +123,14 @@
     elements.micBtn = document.getElementById('micBtn');
     elements.audioFileInput = document.getElementById('audioFileInput');
     elements.playPauseBtn = document.getElementById('playPauseBtn');
+    
+    // Terminal interface
+    elements.terminalOutput = document.getElementById('terminalOutput');
+    elements.terminalInput = document.getElementById('terminalInput');
+    elements.terminalSubmitBtn = document.getElementById('terminalSubmitBtn');
+    elements.uptimeValue = document.getElementById('uptimeValue');
+    elements.feedStatus = document.getElementById('feedStatus');
+    elements.bufferStatus = document.getElementById('bufferStatus');
   }
 
   // ================================
@@ -572,11 +613,185 @@
   // ================================
 
   function bindEvents() {
+    // Audio interface
     elements.submitBtn.addEventListener('click', handleSubmit);
     elements.commandInput.addEventListener('keydown', handleKeyDown);
     elements.micBtn.addEventListener('click', toggleMicrophone);
     elements.audioFileInput.addEventListener('change', handleFileSelect);
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
+    
+    // Mode toggle
+    elements.audioModeBtn.addEventListener('click', () => switchMode('audio'));
+    elements.terminalModeBtn.addEventListener('click', () => switchMode('terminal'));
+    
+    // Terminal interface
+    elements.terminalSubmitBtn.addEventListener('click', handleTerminalSubmit);
+    elements.terminalInput.addEventListener('keydown', handleTerminalKeyDown);
+  }
+
+  // ================================
+  // MODE SWITCHING
+  // ================================
+
+  function switchMode(mode) {
+    if (state.currentMode === mode) return;
+    
+    state.currentMode = mode;
+    
+    // Update button states
+    elements.audioModeBtn.classList.toggle('mode-btn--active', mode === 'audio');
+    elements.terminalModeBtn.classList.toggle('mode-btn--active', mode === 'terminal');
+    
+    // Update interface visibility
+    elements.audioInterface.classList.toggle('active', mode === 'audio');
+    elements.terminalInterface.classList.toggle('active', mode === 'terminal');
+    
+    // Update body background
+    document.body.classList.toggle('terminal-mode', mode === 'terminal');
+    
+    // Start/stop terminal uptime
+    if (mode === 'terminal') {
+      startUptimeCounter();
+    } else {
+      stopUptimeCounter();
+    }
+  }
+
+  // ================================
+  // TERMINAL FUNCTIONS
+  // ================================
+
+  function initTerminal() {
+    state.terminalStartTime = Date.now();
+    renderTerminalOutput();
+  }
+
+  function startUptimeCounter() {
+    if (state.uptimeIntervalId) return;
+    
+    state.uptimeIntervalId = setInterval(updateUptime, 1000);
+    updateUptime();
+  }
+
+  function stopUptimeCounter() {
+    if (state.uptimeIntervalId) {
+      clearInterval(state.uptimeIntervalId);
+      state.uptimeIntervalId = null;
+    }
+  }
+
+  function updateUptime() {
+    const elapsed = Math.floor((Date.now() - state.terminalStartTime) / 1000);
+    const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+    const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+    const seconds = (elapsed % 60).toString().padStart(2, '0');
+    
+    elements.uptimeValue.textContent = `${hours}:${minutes}:${seconds}`;
+  }
+
+  function addTerminalLine(text, type = '') {
+    state.terminalLines.push({ text, type });
+    
+    const line = document.createElement('div');
+    line.className = 'terminal-line' + (type ? ' terminal-line--' + type : '');
+    line.textContent = text;
+    elements.terminalOutput.appendChild(line);
+    
+    // Auto-scroll
+    elements.terminalOutput.scrollTop = elements.terminalOutput.scrollHeight;
+    
+    // Update buffer status
+    const bufferSize = state.terminalLines.length * 0.1;
+    elements.bufferStatus.textContent = bufferSize.toFixed(1) + ' KB';
+  }
+
+  function renderTerminalOutput() {
+    elements.terminalOutput.innerHTML = '';
+    state.terminalLines.forEach(item => {
+      const line = document.createElement('div');
+      if (typeof item === 'string') {
+        line.className = 'terminal-line';
+        line.textContent = item;
+      } else {
+        line.className = 'terminal-line' + (item.type ? ' terminal-line--' + item.type : '');
+        line.textContent = item.text;
+      }
+      elements.terminalOutput.appendChild(line);
+    });
+  }
+
+  function handleTerminalSubmit() {
+    const input = elements.terminalInput.value.trim();
+    if (!input) return;
+    
+    // Echo the command
+    addTerminalLine('> ' + input);
+    
+    // Process command
+    processTerminalCommand(input);
+    
+    // Clear input
+    elements.terminalInput.value = '';
+  }
+
+  function handleTerminalKeyDown(event) {
+    if (event.key === 'Enter') {
+      handleTerminalSubmit();
+    }
+  }
+
+  function processTerminalCommand(cmd) {
+    const command = cmd.toLowerCase().trim();
+    
+    switch (command) {
+      case 'help':
+        addTerminalLine('AVAILABLE COMMANDS:', 'dim');
+        addTerminalLine('  help     - Show this message');
+        addTerminalLine('  clear    - Clear terminal');
+        addTerminalLine('  status   - Show system status');
+        addTerminalLine('  time     - Show current time');
+        addTerminalLine('  date     - Show current date');
+        addTerminalLine('  echo <msg> - Echo a message');
+        break;
+        
+      case 'clear':
+        state.terminalLines = [];
+        elements.terminalOutput.innerHTML = '';
+        addTerminalLine('> TERMINAL CLEARED', 'success');
+        break;
+        
+      case 'status':
+        addTerminalLine('SYSTEM STATUS:', 'dim');
+        addTerminalLine('  MODE: TERMINAL');
+        addTerminalLine('  FEED: ' + elements.feedStatus.textContent);
+        addTerminalLine('  BUFFER: ' + elements.bufferStatus.textContent);
+        addTerminalLine('  UPTIME: ' + elements.uptimeValue.textContent);
+        break;
+        
+      case 'time':
+        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+        addTerminalLine('CURRENT TIME: ' + time, 'success');
+        break;
+        
+      case 'date':
+        const date = new Date().toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        });
+        addTerminalLine('CURRENT DATE: ' + date.toUpperCase(), 'success');
+        break;
+        
+      default:
+        if (command.startsWith('echo ')) {
+          const msg = cmd.substring(5);
+          addTerminalLine(msg.toUpperCase(), 'success');
+        } else {
+          addTerminalLine('UNKNOWN COMMAND: ' + cmd.toUpperCase(), 'error');
+          addTerminalLine('Type "help" for available commands', 'dim');
+        }
+    }
   }
 
   // ================================
@@ -584,13 +799,23 @@
   // ================================
 
   window.StereoApp = {
+    // Audio interface
     setOutput: setOutput,
     addLog: addLog,
-    getState: function() { return { ...state }; },
-    stopEQ: stopEQAnimation,
-    startEQ: startEQAnimation,
     toggleMic: toggleMicrophone,
     stopAudio: stopAudioSource,
+    stopEQ: stopEQAnimation,
+    startEQ: startEQAnimation,
+    
+    // Terminal interface
+    addTerminalLine: addTerminalLine,
+    clearTerminal: function() { processTerminalCommand('clear'); },
+    
+    // Mode switching
+    switchMode: switchMode,
+    
+    // State
+    getState: function() { return { ...state }; },
   };
 
   // ================================
