@@ -91,6 +91,9 @@
         <!-- Screen -->
         <div class="crt-screen">
           <div class="crt-glass">
+            <!-- Screen noise texture -->
+            <div class="crt-noise"></div>
+            
             <!-- Graticule grid -->
             <div class="crt-graticule"></div>
             
@@ -100,7 +103,12 @@
                 <div class="terminal-line">> SYSTEM READY</div>
                 <div class="terminal-line">> AWAITING DATA FEED...</div>
               </div>
+              <!-- Blinking cursor -->
+              <div class="terminal-cursor" id="terminalCursor"></div>
             </div>
+            
+            <!-- Horizontal interference line -->
+            <div class="crt-interference"></div>
             
             <!-- CRT effects overlay -->
             <div class="crt-overlay"></div>
